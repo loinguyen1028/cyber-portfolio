@@ -30,12 +30,16 @@ function savePortfolioPlugin(): Plugin {
                 return;
               }
 
+              // Tự động tăng version dữ liệu (Data Versioning)
+              const currentVer = typeof data.version === 'number' ? data.version : (Number(data.version) || 0);
+              data.version = currentVer + 1;
+
               const targetPath = path.resolve(__dirname, 'src/data/defaultPortfolioData.ts');
               const fileContent = `// Dữ liệu mặc định lấy từ CV — sửa nội dung portfolio tại đây\nexport const DEFAULT_PORTFOLIO_DATA = ${JSON.stringify(data, null, 2)};\n`;
 
               // 1. Ghi đè file TypeScript
               fs.writeFileSync(targetPath, fileContent, 'utf-8');
-              console.log(`[Vite API] Đã ghi đè dữ liệu vào: ${targetPath}`);
+              console.log(`[Vite API] Đã ghi đè dữ liệu (v${data.version}) vào: ${targetPath}`);
 
               // 2. Chạy lệnh Git add & commit
               const gitCmd = 'git add src/data/defaultPortfolioData.ts && git commit -m "Auto-update portfolio data via CMS"';
@@ -47,7 +51,8 @@ function savePortfolioPlugin(): Plugin {
                     res.end(
                       JSON.stringify({
                         success: true,
-                        message: 'Đã lưu vào defaultPortfolioData.ts (Git: Không có thay đổi mới để commit).',
+                        version: data.version,
+                        message: `Đã lưu vào defaultPortfolioData.ts (v${data.version}) (Git: Không có thay đổi mới để commit).`,
                         details: stdout || stderr
                       })
                     );
@@ -69,7 +74,8 @@ function savePortfolioPlugin(): Plugin {
                 res.end(
                   JSON.stringify({
                     success: true,
-                    message: 'Đã lưu vào defaultPortfolioData.ts và commit Git thành công!',
+                    version: data.version,
+                    message: `Đã lưu vào defaultPortfolioData.ts (v${data.version}) và commit Git thành công!`,
                     commitOutput: stdout
                   })
                 );

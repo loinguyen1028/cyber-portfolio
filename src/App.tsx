@@ -40,20 +40,81 @@ import AdminDashboardPanel from './components/admin/AdminDashboardPanel';
 export default function App() {
   // Load persisted state from localStorage or fallback to DEFAULT_PORTFOLIO_DATA
   const [portfolioData, setPortfolioData] = useState(() => {
+    const codeVersion = Number(DEFAULT_PORTFOLIO_DATA.version) || 1;
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const localVersion = Number(parsed.version) || 0;
+
+        // 1. NẾU version trong code MỚI HƠN version trong localStorage:
+        // Tự động xóa dữ liệu cũ trong localStorage, ghi đè dữ liệu mới từ code vào localStorage
+        if (codeVersion > localVersion) {
+          console.log(`[Version Sync] Code version (v${codeVersion}) > localStorage (v${localVersion}). Ghi đè bằng dữ liệu code mới.`);
+          localStorage.removeItem(STORAGE_KEY);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_PORTFOLIO_DATA));
+          return DEFAULT_PORTFOLIO_DATA;
+        }
+
+        // 2. NẾU version bằng nhau (hoặc local >= code): Giữ nguyên logic cũ (ưu tiên localStorage)
         if (parsed.education && (parsed.education.universityBadge === 'ĐẠI HỌC CHÍNH QUY' || !parsed.education.universityBadge)) {
           parsed.education.universityBadge = 'TRÌNH ĐỘ HỌC VẤN';
         }
         return { ...DEFAULT_PORTFOLIO_DATA, ...parsed };
+      } else {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_PORTFOLIO_DATA));
       }
     } catch (e) {
       // Ignore storage errors
     }
     return DEFAULT_PORTFOLIO_DATA;
   });
+
+  // 1. Kiểm tra Version khi ứng dụng khởi chạy (Data Versioning)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const localVersion = Number(parsed.version) || 0;
+        const codeVersion = Number(DEFAULT_PORTFOLIO_DATA.version) || 1;
+
+        if (codeVersion > localVersion) {
+          console.log(`[Version Sync Hook] Code (v${codeVersion}) > Local (v${localVersion}). Làm mới dữ liệu và tải lại trang...`);
+          localStorage.removeItem(STORAGE_KEY);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_PORTFOLIO_DATA));
+          window.location.reload();
+        }
+      }
+    } catch (e) {
+      console.error('[Version Sync Error]', e);
+    }
+  }, []);
+
+  // 2. Đồng bộ dữ liệu giữa các Tab trình duyệt theo thời gian thực (Storage Event)
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === STORAGE_KEY) {
+        if (e.newValue) {
+          try {
+            const updated = JSON.parse(e.newValue);
+            if (updated && updated.hero) {
+              console.log(`[Tab Sync] Nhận dữ liệu cập nhật từ tab khác (version: ${updated.version || 0})`);
+              setPortfolioData(updated);
+            }
+          } catch (err) {
+            console.error('[Tab Sync Error]', err);
+          }
+        } else {
+          console.log('[Tab Sync] localStorage đã bị xóa từ tab khác. Khôi phục về dữ liệu code gốc.');
+          setPortfolioData(DEFAULT_PORTFOLIO_DATA);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   // Save to localStorage whenever portfolioData changes
   useEffect(() => {

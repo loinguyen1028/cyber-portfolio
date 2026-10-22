@@ -1,5 +1,6 @@
 // Dữ liệu mặc định lấy từ CV — sửa nội dung portfolio tại đây
 export const DEFAULT_PORTFOLIO_DATA = {
+  "version": 1,
   "hero": {
     "badge": "CYBERSECURITY INTERN / FRESHER • ZERO-G BOOSTED",
     "tagline": "DEFENDING DIGITAL GRAVITY //",

@@ -27,8 +27,10 @@ import {
   Save,
   Loader2,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
+import { STORAGE_KEY } from '../../constants';
 
 // ==========================================
 // 5. ADMIN CMS PANEL COMPONENT
@@ -83,6 +85,11 @@ const AdminDashboardPanel = ({
       if (!response.ok || !result?.success) {
         const errorText = result?.message || `Lỗi máy chủ HTTP ${response.status}`;
         throw new Error(errorText);
+      }
+
+      // Cập nhật version mới vào state để kích hoạt lưu vào localStorage & đồng bộ sang các tab khác
+      if (result.version) {
+        setData((prev) => ({ ...prev, version: result.version }));
       }
 
       setSaveStatus('success');
@@ -385,6 +392,26 @@ const AdminDashboardPanel = ({
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="hidden md:inline">Reset CV Gốc</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (
+                window.confirm(
+                  'Khôi phục mặc định từ mã nguồn (Force Sync)?\n\nToàn bộ dữ liệu tạm trong localStorage sẽ bị xóa và trang web sẽ tải lại từ file code mới nhất.'
+                )
+              ) {
+                try {
+                  localStorage.removeItem(STORAGE_KEY);
+                } catch (e) {}
+                window.location.reload();
+              }
+            }}
+            className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/30 text-xs font-mono text-amber-300 flex items-center gap-1.5 transition-all"
+            title="Xóa cache trình duyệt và tải lại trang từ dữ liệu code mới nhất"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden md:inline">Force Sync (Gốc)</span>
           </button>
         </div>
       </div>
