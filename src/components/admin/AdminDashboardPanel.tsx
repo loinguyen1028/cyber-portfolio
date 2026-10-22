@@ -56,8 +56,14 @@ const AdminDashboardPanel = ({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [saveMessage, setSaveMessage] = useState<string>('');
 
-  // Lưu trực tiếp vào file src/data/defaultPortfolioData.ts & tự động Git Commit
+  // Lưu trực tiếp vào file src/data/defaultPortfolioData.ts & tự động Git Commit (Chỉ áp dụng ở Local Dev)
   const handleSaveToCodebase = async () => {
+    // Không thực hiện trên Production (Vercel) vì không có Node.js server
+    if (import.meta.env.PROD) {
+      onShowToast('Tính năng Lưu vào Code & Git chỉ khả dụng ở môi trường Local Development!');
+      return;
+    }
+
     if (saveStatus === 'loading') return;
     setSaveStatus('loading');
     setSaveMessage('Đang lưu vào defaultPortfolioData.ts và commit Git...');
@@ -280,7 +286,7 @@ const AdminDashboardPanel = ({
             <p className="text-xs text-slate-400">
               Mọi thay đổi được cập nhật trực tiếp lên trang web theo thời gian thực & lưu tự động vào trình duyệt.
             </p>
-            {saveMessage && (
+            {import.meta.env.DEV && saveMessage && (
               <div
                 className={`mt-1 text-[11px] font-mono flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all ${
                   saveStatus === 'error'
@@ -298,35 +304,37 @@ const AdminDashboardPanel = ({
 
         {/* View Mode Switcher & Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Nút Lưu trực tiếp vào defaultPortfolioData.ts & Git commit */}
-          <button
-            onClick={handleSaveToCodebase}
-            disabled={saveStatus === 'loading'}
-            className={`px-3 py-2 rounded-xl text-xs font-mono font-semibold flex items-center gap-1.5 transition-all shadow-md ${
-              saveStatus === 'loading'
-                ? 'bg-amber-500/20 border border-amber-400/60 text-amber-300 animate-pulse cursor-wait'
-                : saveStatus === 'success'
-                ? 'bg-emerald-500/25 border border-emerald-400 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
-                : saveStatus === 'error'
-                ? 'bg-red-500/25 border border-red-400 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.35)]'
-                : 'bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 hover:from-emerald-500/35 hover:to-cyan-500/35 border border-emerald-400/50 hover:border-emerald-300 text-emerald-200 hover:text-white shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]'
-            }`}
-            title="Lưu dữ liệu hiện tại vào file src/data/defaultPortfolioData.ts và tự động tạo Git commit"
-          >
-            {saveStatus === 'loading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />}
-            {saveStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
-            {saveStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-400" />}
-            {saveStatus === 'idle' && <GitCommit className="w-3.5 h-3.5 text-emerald-400" />}
-            <span>
-              {saveStatus === 'loading'
-                ? 'Đang commit...'
-                : saveStatus === 'success'
-                ? 'Đã Commit!'
-                : saveStatus === 'error'
-                ? 'Lỗi Commit'
-                : 'Lưu vào Code & Git'}
-            </span>
-          </button>
+          {/* Nút Lưu trực tiếp vào defaultPortfolioData.ts & Git commit (Chỉ hiển thị ở Local Dev) */}
+          {import.meta.env.DEV && (
+            <button
+              onClick={handleSaveToCodebase}
+              disabled={saveStatus === 'loading'}
+              className={`px-3 py-2 rounded-xl text-xs font-mono font-semibold flex items-center gap-1.5 transition-all shadow-md ${
+                saveStatus === 'loading'
+                  ? 'bg-amber-500/20 border border-amber-400/60 text-amber-300 animate-pulse cursor-wait'
+                  : saveStatus === 'success'
+                  ? 'bg-emerald-500/25 border border-emerald-400 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
+                  : saveStatus === 'error'
+                  ? 'bg-red-500/25 border border-red-400 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.35)]'
+                  : 'bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 hover:from-emerald-500/35 hover:to-cyan-500/35 border border-emerald-400/50 hover:border-emerald-300 text-emerald-200 hover:text-white shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]'
+              }`}
+              title="Lưu dữ liệu hiện tại vào file src/data/defaultPortfolioData.ts và tự động tạo Git commit (Chỉ hoạt động ở môi trường Local)"
+            >
+              {saveStatus === 'loading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />}
+              {saveStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+              {saveStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-400" />}
+              {saveStatus === 'idle' && <GitCommit className="w-3.5 h-3.5 text-emerald-400" />}
+              <span>
+                {saveStatus === 'loading'
+                  ? 'Đang commit...'
+                  : saveStatus === 'success'
+                  ? 'Đã Commit!'
+                  : saveStatus === 'error'
+                  ? 'Lỗi Commit'
+                  : 'Lưu vào Code & Git'}
+              </span>
+            </button>
+          )}
 
           <div className="inline-flex rounded-xl bg-black/50 p-1 border border-white/10">
             <button
