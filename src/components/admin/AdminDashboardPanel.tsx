@@ -22,7 +22,12 @@ import {
   UserCheck,
   ArrowUp,
   ArrowDown,
-  X
+  X,
+  GitCommit,
+  Save,
+  Loader2,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 
 // ==========================================
@@ -44,6 +49,61 @@ const AdminDashboardPanel = ({
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const jsonInputRef = useRef(null);
+
+  // Trạng thái lưu vào Codebase & Git commit
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [saveMessage, setSaveMessage] = useState<string>('');
+
+  // Lưu trực tiếp vào file src/data/defaultPortfolioData.ts & tự động Git Commit
+  const handleSaveToCodebase = async () => {
+    if (saveStatus === 'loading') return;
+    setSaveStatus('loading');
+    setSaveMessage('Đang lưu vào defaultPortfolioData.ts và commit Git...');
+
+    try {
+      let response;
+      try {
+        // Ưu tiên 1: Gọi qua Vite dev server middleware (/api/save-portfolio)
+        response = await fetch('/api/save-portfolio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+      } catch {
+        // Ưu tiên 2: Fallback qua backend Node.js độc lập ở port 3001
+        response = await fetch('http://localhost:3001/api/save-portfolio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+      }
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.success) {
+        const errorText = result?.message || `Lỗi máy chủ HTTP ${response.status}`;
+        throw new Error(errorText);
+      }
+
+      setSaveStatus('success');
+      setSaveMessage(result.message || 'Đã lưu và commit Git thành công!');
+      onShowToast('✓ Đã lưu trực tiếp vào Codebase & Git commit thành công!');
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setSaveMessage('');
+      }, 4000);
+    } catch (err: any) {
+      console.error('[Save to Codebase Error]', err);
+      setSaveStatus('error');
+      const errorMsg = err?.message || 'Không thể kết nối đến Backend/Vite API (Port 5173 / 3001)';
+      setSaveMessage(errorMsg);
+      onShowToast(`Lỗi lưu codebase: ${errorMsg}`);
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setSaveMessage('');
+      }, 6000);
+    }
+  };
 
   // New skill input state per category
   const [newSkillMap, setNewSkillMap] = useState({});
@@ -213,11 +273,54 @@ const AdminDashboardPanel = ({
             <p className="text-xs text-slate-400">
               Mọi thay đổi được cập nhật trực tiếp lên trang web theo thời gian thực & lưu tự động vào trình duyệt.
             </p>
+            {saveMessage && (
+              <div
+                className={`mt-1 text-[11px] font-mono flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all ${
+                  saveStatus === 'error'
+                    ? 'text-red-300 bg-red-950/40 border-red-500/40'
+                    : saveStatus === 'success'
+                    ? 'text-emerald-300 bg-emerald-950/40 border-emerald-500/40'
+                    : 'text-amber-300 bg-amber-950/40 border-amber-500/40'
+                }`}
+              >
+                <span>▶ {saveMessage}</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* View Mode Switcher & Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Nút Lưu trực tiếp vào defaultPortfolioData.ts & Git commit */}
+          <button
+            onClick={handleSaveToCodebase}
+            disabled={saveStatus === 'loading'}
+            className={`px-3 py-2 rounded-xl text-xs font-mono font-semibold flex items-center gap-1.5 transition-all shadow-md ${
+              saveStatus === 'loading'
+                ? 'bg-amber-500/20 border border-amber-400/60 text-amber-300 animate-pulse cursor-wait'
+                : saveStatus === 'success'
+                ? 'bg-emerald-500/25 border border-emerald-400 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
+                : saveStatus === 'error'
+                ? 'bg-red-500/25 border border-red-400 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.35)]'
+                : 'bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 hover:from-emerald-500/35 hover:to-cyan-500/35 border border-emerald-400/50 hover:border-emerald-300 text-emerald-200 hover:text-white shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]'
+            }`}
+            title="Lưu dữ liệu hiện tại vào file src/data/defaultPortfolioData.ts và tự động tạo Git commit"
+          >
+            {saveStatus === 'loading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />}
+            {saveStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+            {saveStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-400" />}
+            {saveStatus === 'idle' && <GitCommit className="w-3.5 h-3.5 text-emerald-400" />}
+            <span>
+              {saveStatus === 'loading'
+                ? 'Đang commit...'
+                : saveStatus === 'success'
+                ? 'Đã Commit!'
+                : saveStatus === 'error'
+                ? 'Lỗi Commit'
+                : 'Lưu vào Code & Git'}
+            </span>
+          </button>
+
           <div className="inline-flex rounded-xl bg-black/50 p-1 border border-white/10">
             <button
               onClick={() => setViewMode('portfolio')}
