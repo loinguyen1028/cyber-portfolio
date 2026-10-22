@@ -95,9 +95,35 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ success: false, message: err?.message || 'Lỗi server nội bộ' }));
       }
     });
+  } else if (req.url === '/api/git-pull' && req.method === 'POST') {
+    // API Endpoint: POST /api/git-pull
+    console.log('[Server API] Đang thực thi git pull origin main...');
+    exec('git pull origin main', { cwd: __dirname }, (error, stdout, stderr) => {
+      res.writeHead(error ? 500 : 200, { 'Content-Type': 'application/json' });
+      if (error) {
+        console.error(`[Git Pull Error] ${error.message}`);
+        res.end(
+          JSON.stringify({
+            success: false,
+            message: 'Lỗi khi chạy git pull: ' + (error.message || stderr),
+            details: stderr
+          })
+        );
+        return;
+      }
+
+      console.log(`[Git Pull Success] ${stdout}`);
+      res.end(
+        JSON.stringify({
+          success: true,
+          message: 'Đã kéo code mới nhất từ Git thành công!',
+          output: stdout
+        })
+      );
+    });
   } else {
     res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Endpoint not found. Use POST /api/save-portfolio' }));
+    res.end(JSON.stringify({ error: 'Endpoint not found. Use POST /api/save-portfolio or POST /api/git-pull' }));
   }
 });
 

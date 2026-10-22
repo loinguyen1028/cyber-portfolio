@@ -86,6 +86,34 @@ function savePortfolioPlugin(): Plugin {
               res.end(JSON.stringify({ success: false, message: err?.message || 'Lỗi server nội bộ' }));
             }
           });
+        } else if (req.url === '/api/git-pull' && req.method === 'POST') {
+          // Endpoint: POST /api/git-pull (Thực hiện git pull origin main ở môi trường Local Dev)
+          console.log('[Vite API] Đang thực thi: git pull origin main...');
+          exec('git pull origin main', { cwd: __dirname }, (error, stdout, stderr) => {
+            res.setHeader('Content-Type', 'application/json');
+            if (error) {
+              console.error(`[Vite Git Pull Error] ${error.message}`);
+              res.statusCode = 500;
+              res.end(
+                JSON.stringify({
+                  success: false,
+                  message: 'Lỗi khi chạy git pull: ' + (error.message || stderr),
+                  details: stderr
+                })
+              );
+              return;
+            }
+
+            console.log(`[Vite Git Pull Success] ${stdout}`);
+            res.statusCode = 200;
+            res.end(
+              JSON.stringify({
+                success: true,
+                message: 'Đã kéo code mới nhất từ Git thành công!',
+                output: stdout
+              })
+            );
+          });
         } else {
           next();
         }

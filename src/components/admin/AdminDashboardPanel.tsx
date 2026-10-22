@@ -28,7 +28,8 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  GitPullRequest
 } from 'lucide-react';
 import { STORAGE_KEY } from '../../constants';
 
@@ -55,6 +56,88 @@ const AdminDashboardPanel = ({
   // Trạng thái lưu vào Codebase & Git commit
   const [saveStatus, setSaveStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [saveMessage, setSaveMessage] = useState<string>('');
+
+  // Trạng thái Git Pull (Lấy bản mới nhất)
+  const [pullStatus, setPullStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  // Xử lý Git Pull:
+  // - Local: Gọi API /api/git-pull (chạy git pull origin main)
+  // - Production (Vercel): Tải raw file từ GitHub repo và lưu vào localStorage
+  const handleGitPull = async () => {
+    if (pullStatus === 'loading') return;
+    setPullStatus('loading');
+
+    try {
+      if (import.meta.env.DEV) {
+        // TRƯỜNG HỢP A: Ở Local Dev -> Gọi API /api/git-pull chạy lệnh git pull
+        let response;
+        try {
+          response = await fetch('/api/git-pull', { method: 'POST' });
+        } catch {
+          response = await fetch('http://localhost:3001/api/git-pull', { method: 'POST' });
+        }
+
+        if (!response.ok) {
+          const errJson = await response.json().catch(() => null);
+          throw new Error(errJson?.message || `Lỗi máy chủ HTTP ${response.status}`);
+        }
+
+        setPullStatus('success');
+        onShowToast('✓ Đã kéo code mới nhất từ Git! Đang làm mới trang...');
+        // Xóa cache localStorage để app tải version mới nhất từ file code vừa pull
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch (e) {}
+        setTimeout(() => {
+          window.location.reload();
+        }, 1200);
+      } else {
+        // TRƯỜNG HỢP B: Ở Production (Vercel) -> Tải trực tiếp file từ GitHub Raw
+        const GITHUB_RAW_URL =
+          'https://raw.githubusercontent.com/loinguyen1028/cyber-portfolio/main/src/data/defaultPortfolioData.ts';
+
+        onShowToast('Đang kết nối tới GitHub để tải dữ liệu mới nhất...');
+        const response = await fetch(GITHUB_RAW_URL, { cache: 'no-store' });
+
+        if (!response.ok) {
+          throw new Error(
+            `Không thể tải từ GitHub (HTTP ${response.status}). Vui lòng kiểm tra kết nối mạng hoặc trạng thái repository.`
+          );
+        }
+
+        const rawTs = await response.text();
+        const startIdx = rawTs.indexOf('{');
+        const endIdx = rawTs.lastIndexOf('}');
+        if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+          throw new Error('Cấu trúc file trên GitHub không chứa dữ liệu JSON hợp lệ!');
+        }
+
+        const jsonStr = rawTs.substring(startIdx, endIdx + 1);
+        const parsedData = JSON.parse(jsonStr);
+
+        if (!parsedData || !parsedData.hero || !parsedData.projects) {
+          throw new Error('Dữ liệu Portfolio trên GitHub không đúng cấu trúc quy định!');
+        }
+
+        // Lưu vào localStorage và cập nhật state
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsedData));
+        } catch (e) {}
+        setData(parsedData);
+        setPullStatus('success');
+        onShowToast('✓ Đã đồng bộ bản mới nhất từ GitHub thành công! Đang làm mới...');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1200);
+      }
+    } catch (err: any) {
+      console.error('[Git Pull Error]', err);
+      setPullStatus('error');
+      const msg = err?.message || 'Không thể thực hiện Git Pull';
+      onShowToast(`Lỗi Git Pull: ${msg}`);
+      setTimeout(() => setPullStatus('idle'), 4500);
+    }
+  };
 
   // Lưu trực tiếp vào file src/data/defaultPortfolioData.ts & tự động Git Commit (Chỉ áp dụng ở Local Dev)
   const handleSaveToCodebase = async () => {
@@ -420,6 +503,45 @@ const AdminDashboardPanel = ({
           >
             <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden md:inline">Force Sync (Gốc)</span>
+          </button>
+
+          {/* Nút Git Pull (Đồng bộ) */}
+          <button
+            onClick={handleGitPull}
+            disabled={pullStatus === 'loading'}
+            className={`px-3 py-2 rounded-xl text-xs font-mono font-semibold flex items-center gap-1.5 transition-all shadow-sm ${
+              pullStatus === 'loading'
+                ? 'bg-cyan-500/20 border border-cyan-400/60 text-cyan-300 animate-pulse cursor-wait'
+                : pullStatus === 'success'
+                ? 'bg-emerald-500/25 border border-emerald-400 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
+                : pullStatus === 'error'
+                ? 'bg-red-500/25 border border-red-400 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.35)]'
+                : 'bg-cyan-500/10 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 hover:text-white hover:border-cyan-400/50'
+            }`}
+            title={
+              import.meta.env.DEV
+                ? 'Chạy lệnh git pull origin main để cập nhật mã nguồn mới nhất'
+                : 'Tải bản dữ liệu mới nhất từ GitHub repo và áp dụng vào trang web'
+            }
+          >
+            {pullStatus === 'loading' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+            ) : pullStatus === 'success' ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            ) : pullStatus === 'error' ? (
+              <AlertCircle className="w-3.5 h-3.5 text-red-400" />
+            ) : (
+              <GitPullRequest className="w-3.5 h-3.5 text-cyan-400" />
+            )}
+            <span className="hidden md:inline">
+              {pullStatus === 'loading'
+                ? 'Đang kéo...'
+                : pullStatus === 'success'
+                ? 'Đã kéo Git!'
+                : pullStatus === 'error'
+                ? 'Lỗi Pull'
+                : 'Git Pull (Đồng bộ)'}
+            </span>
           </button>
         </div>
       </div>
