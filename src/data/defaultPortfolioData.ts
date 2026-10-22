@@ -1,11 +1,11 @@
 // Dữ liệu mặc định lấy từ CV — sửa nội dung portfolio tại đây
 export const DEFAULT_PORTFOLIO_DATA = {
-  "version": 1,
+  "version": 2,
   "hero": {
     "badge": "CYBERSECURITY INTERN / FRESHER • ZERO-G BOOSTED",
     "tagline": "DEFENDING DIGITAL GRAVITY //",
     "firstName": "NGUYỄN",
-    "lastName": "PHƯỚC LỢI 1",
+    "lastName": "PHƯỚC LỢI 5",
     "roleBadge": "Cybersecurity Intern / Fresher",
     "roleSubtitle": "An ninh mạng • SOC Monitoring & Incident Detection",
     "bio": "Sinh viên năm cuối ngành Công nghệ thông tin, định hướng An ninh mạng. Đam mê giám sát, phát hiện sự cố và ứng dụng AI vào phòng thủ mạng.",
