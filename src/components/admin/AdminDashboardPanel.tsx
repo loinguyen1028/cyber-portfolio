@@ -3,6 +3,7 @@ import {
   Shield,
   Cpu,
   Eye,
+  EyeOff,
   Sparkles,
   GraduationCap,
   Zap,
@@ -56,6 +57,28 @@ const AdminDashboardPanel = ({
   // Trạng thái lưu vào Codebase & Git commit
   const [saveStatus, setSaveStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [saveMessage, setSaveMessage] = useState<string>('');
+
+  // Cấu hình GitHub Personal Access Token (PAT) lưu trong localStorage
+  const GITHUB_TOKEN_STORAGE_KEY = 'npl_github_pat_token';
+  const [githubToken, setGithubToken] = useState(() => {
+    try {
+      return localStorage.getItem(GITHUB_TOKEN_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [showToken, setShowToken] = useState(false);
+
+  const handleTokenChange = (val: string) => {
+    setGithubToken(val);
+    try {
+      if (val) {
+        localStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, val);
+      } else {
+        localStorage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
+      }
+    } catch {}
+  };
 
   // Trạng thái Git Pull (Lấy bản mới nhất)
   const [pullStatus, setPullStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -141,65 +164,159 @@ const AdminDashboardPanel = ({
 
   // Lưu trực tiếp vào file src/data/defaultPortfolioData.ts & tự động Git Commit
   const handleSaveToCodebase = async () => {
-    // Nếu ở môi trường Production (Vercel) -> cảnh báo nhẹ nhàng và return sớm, tuyệt đối không gọi fetch()
-    if (import.meta.env.PROD) {
-      onShowToast(
-        'Tính năng Commit chỉ hoạt động ở môi trường Local. Trên Vercel, dữ liệu đã được tự động lưu vào trình duyệt (localStorage).'
-      );
-      return;
-    }
-
     if (saveStatus === 'loading') return;
     setSaveStatus('loading');
-    setSaveMessage('Đang lưu vào defaultPortfolioData.ts và commit Git...');
 
     try {
-      let response;
-      try {
-        // Ưu tiên 1: Gọi qua Vite dev server middleware (/api/save-portfolio)
-        response = await fetch('/api/save-portfolio', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+      if (import.meta.env.DEV) {
+        // ==========================================
+        // TRƯỜNG HỢP A: Ở Local Dev -> Gọi API backend Vite / Node.js
+        // ==========================================
+        setSaveMessage('Đang lưu vào defaultPortfolioData.ts và commit Git...');
+
+        let response;
+        try {
+          // Ưu tiên 1: Gọi qua Vite dev server middleware (/api/save-portfolio)
+          response = await fetch('/api/save-portfolio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        } catch {
+          // Ưu tiên 2: Fallback qua backend Node.js độc lập ở port 3001
+          response = await fetch('http://localhost:3001/api/save-portfolio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        }
+
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || !result?.success) {
+          const errorText = result?.message || `Lỗi máy chủ HTTP ${response.status}`;
+          throw new Error(errorText);
+        }
+
+        // Cập nhật version mới vào state để kích hoạt lưu vào localStorage & đồng bộ sang các tab khác
+        if (result.version) {
+          setData((prev) => ({ ...prev, version: result.version }));
+        }
+
+        setSaveStatus('success');
+        setSaveMessage(result.message || 'Đã lưu và commit Git thành công!');
+        onShowToast('✓ Đã lưu trực tiếp vào Codebase & Git commit thành công!');
+        setTimeout(() => {
+          setSaveStatus('idle');
+          setSaveMessage('');
+        }, 4000);
+      } else {
+        // ==========================================
+        // TRƯỜNG HỢP B: Ở Production (Vercel) -> Dùng GitHub REST API commit trực tiếp vào repo
+        // ==========================================
+        if (!githubToken || !githubToken.trim()) {
+          throw new Error(
+            'Chưa có GitHub Token! Vui lòng nhập Personal Access Token (PAT) vào ô cấu hình GitHub phía trên.'
+          );
+        }
+
+        setSaveMessage('Đang kết nối GitHub REST API để kiểm tra sha file...');
+        onShowToast('Đang kết nối GitHub REST API...');
+
+        const token = githubToken.trim();
+        const REPO_OWNER = 'loinguyen1028';
+        const REPO_NAME = 'cyber-portfolio';
+        const FILE_PATH = 'src/data/defaultPortfolioData.ts';
+        const API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
+
+        // Bước 1: Gọi GET lấy sha hiện tại của file
+        const getRes = await fetch(`${API_URL}?ref=main`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github.v3+json'
+          }
         });
-      } catch {
-        // Ưu tiên 2: Fallback qua backend Node.js độc lập ở port 3001
-        response = await fetch('http://localhost:3001/api/save-portfolio', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+
+        if (!getRes.ok) {
+          const errJson = await getRes.json().catch(() => null);
+          if (getRes.status === 401) {
+            throw new Error('Lỗi 401: GitHub Token không hợp lệ hoặc đã hết hạn.');
+          } else if (getRes.status === 403) {
+            throw new Error('Lỗi 403: Token không đủ quyền truy cập hoặc bị giới hạn rate limit.');
+          } else if (getRes.status === 404) {
+            throw new Error(`Lỗi 404: Không tìm thấy repository hoặc file ${FILE_PATH}.`);
+          }
+          throw new Error(`Lỗi kết nối GitHub (HTTP ${getRes.status}): ${errJson?.message || 'Thất bại'}`);
+        }
+
+        const fileInfo = await getRes.json();
+        const currentSha = fileInfo.sha;
+
+        // Bước 2: Tự động tăng version và chuẩn bị nội dung Base64
+        setSaveMessage('Đang đóng gói dữ liệu và mã hóa file...');
+        const currentVer = typeof data.version === 'number' ? data.version : (Number(data.version) || 0);
+        const nextVer = currentVer + 1;
+        const updatedData = { ...data, version: nextVer };
+
+        const fileContent = `// Dữ liệu mặc định lấy từ CV — sửa nội dung portfolio tại đây\nexport const DEFAULT_PORTFOLIO_DATA = ${JSON.stringify(updatedData, null, 2)};\n`;
+
+        // Mã hóa Base64 an toàn hỗ trợ tiếng Việt có dấu
+        const base64Content = btoa(unescape(encodeURIComponent(fileContent)));
+
+        // Bước 3: Gọi PUT commit nội dung mới lên GitHub
+        setSaveMessage('Đang đẩy commit lên GitHub main branch...');
+        const putRes = await fetch(API_URL, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: `Auto-update portfolio data via CMS (v${nextVer})`,
+            content: base64Content,
+            sha: currentSha,
+            branch: 'main'
+          })
         });
+
+        if (!putRes.ok) {
+          const errPutJson = await putRes.json().catch(() => null);
+          if (putRes.status === 401) {
+            throw new Error('Lỗi 401: Token không hợp lệ.');
+          } else if (putRes.status === 403) {
+            throw new Error('Lỗi 403: Token thiếu quyền ghi (Contents: Read and write) vào repo.');
+          } else if (putRes.status === 409) {
+            throw new Error('Lỗi 409: Xung đột commit trên GitHub. Vui lòng bấm "Git Pull" trước!');
+          }
+          throw new Error(`Lỗi Commit GitHub (HTTP ${putRes.status}): ${errPutJson?.message || 'Thất bại'}`);
+        }
+
+        // Lưu dữ liệu mới vào state và localStorage
+        setData(updatedData);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData));
+        } catch (e) {}
+
+        setSaveStatus('success');
+        setSaveMessage(`Đã commit lên GitHub (v${nextVer})! Vercel đang build lại trang.`);
+        onShowToast('✓ Đã lưu lên GitHub! Vercel đang build lại trang (mất khoảng 1-2 phút).');
+        setTimeout(() => {
+          setSaveStatus('idle');
+          setSaveMessage('');
+        }, 5000);
       }
-
-      const result = await response.json().catch(() => null);
-
-      if (!response.ok || !result?.success) {
-        const errorText = result?.message || `Lỗi máy chủ HTTP ${response.status}`;
-        throw new Error(errorText);
-      }
-
-      // Cập nhật version mới vào state để kích hoạt lưu vào localStorage & đồng bộ sang các tab khác
-      if (result.version) {
-        setData((prev) => ({ ...prev, version: result.version }));
-      }
-
-      setSaveStatus('success');
-      setSaveMessage(result.message || 'Đã lưu và commit Git thành công!');
-      onShowToast('✓ Đã lưu trực tiếp vào Codebase & Git commit thành công!');
-      setTimeout(() => {
-        setSaveStatus('idle');
-        setSaveMessage('');
-      }, 4000);
     } catch (err: any) {
       console.error('[Save to Codebase Error]', err);
       setSaveStatus('error');
-      const errorMsg = err?.message || 'Không thể kết nối đến Backend/Vite API (Port 5173 / 3001)';
+      const errorMsg = err?.message || 'Không thể kết nối đến Backend/GitHub API';
       setSaveMessage(errorMsg);
-      onShowToast(`Lỗi lưu codebase: ${errorMsg}`);
+      onShowToast(errorMsg);
       setTimeout(() => {
         setSaveStatus('idle');
         setSaveMessage('');
-      }, 6000);
+      }, 7000);
     }
   };
 
@@ -371,9 +488,39 @@ const AdminDashboardPanel = ({
             <p className="text-xs text-slate-400">
               Mọi thay đổi được cập nhật trực tiếp lên trang web theo thời gian thực & lưu tự động vào trình duyệt.
             </p>
-            {import.meta.env.DEV && saveMessage && (
+
+            {/* Cấu hình GitHub Token (PAT) để Commit trực tiếp từ Vercel */}
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <div className="relative flex items-center">
+                <KeyRound className="w-3.5 h-3.5 text-cyan-400 absolute left-2.5 pointer-events-none" />
+                <input
+                  type={showToken ? 'text' : 'password'}
+                  value={githubToken}
+                  onChange={(e) => handleTokenChange(e.target.value)}
+                  placeholder="GitHub PAT (ghp_... hoặc github_pat_...)"
+                  title="Tạo Fine-grained Token tại GitHub Settings -> Developer Settings, cấp quyền Contents: Read and write cho repo này."
+                  className="pl-8 pr-8 py-1.5 bg-black/60 border border-white/15 focus:border-cyan-400 rounded-lg text-xs font-mono text-cyan-200 placeholder:text-slate-500 outline-none w-56 sm:w-72 transition-all shadow-inner"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken(!showToken)}
+                  className="absolute right-2 text-slate-400 hover:text-cyan-300 transition-colors"
+                  title={showToken ? 'Ẩn Token' : 'Hiện Token'}
+                >
+                  {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              <span
+                className="text-[10px] text-slate-400 font-mono hidden md:inline"
+                title="Tạo Fine-grained Token tại GitHub Settings -> Developer Settings, cấp quyền Contents: Read and write cho repo này."
+              >
+                ℹ GitHub PAT để "Lưu vào Code & Git" trực tiếp từ Vercel
+              </span>
+            </div>
+
+            {saveMessage && (
               <div
-                className={`mt-1 text-[11px] font-mono flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all ${
+                className={`mt-1.5 text-[11px] font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all ${
                   saveStatus === 'error'
                     ? 'text-red-300 bg-red-950/40 border-red-500/40'
                     : saveStatus === 'success'
